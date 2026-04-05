@@ -45,17 +45,21 @@ Use this document to record your thinking as you work through the exercise. We c
 ## Section C — Open-Ended
 
 ### Problem definition
-- **How did you interpret "users lose track of important tasks"?**
-- **What assumptions did you make?**
+- **How did you interpret "users lose track of important tasks"?** "Important" = high priority tasks. "Lose track" = no feedback loop reinforcing return visits. Users complete tasks but get no reward signal, so there's no habit formation. Without engagement, they stop checking and important tasks slip.
+- **What assumptions did you make?** Single user (no auth needed). XP is motivational, not competitive (no leaderboard yet). Streaks encourage daily engagement. External notifications (Discord/Telegram) act as a pull mechanism to bring users back to the app.
 
 ### Solution
 - **What did you build?**
-- **Why this approach over alternatives you considered?**
-- **Is this a one-way door or a two-way door? Why?**
+  - **XP system:** POST /tasks/{id}/complete awards XP based on priority (low=5, medium=15, high=30, urgent=50). Points stored on each task and accumulated in a UserScore table.
+  - **Streaks:** Consecutive daily completions build a streak. Each streak day adds +10 XP bonus per streak level. Missing a day resets the streak. Same-day completions maintain but don't increment the streak.
+  - **Frontend gamification:** XP counter + fire streak icon in the navbar. Green "Complete" button on each task. Animated "+XP!" popup on completion. Completed tasks get green tint + strikethrough. Color-coded priority badges (emerald/blue/orange/red with borders).
+  - **Discord & Telegram notifications:** POST /api/notifications/config to configure webhooks (Discord) or bot token + chat ID (Telegram). When a task is completed, a notification fires to all active integrations with the task name, XP earned, streak info, and total XP. Dedicated /notifications settings page with test button.
+- **Why this approach over alternatives you considered?** Considered email notifications but Discord/Telegram are faster and more engaging for developers. Considered a full leaderboard but it requires auth — keeping it single-user keeps scope manageable. XP is simpler than badges/levels and gives immediate feedback.
+- **Is this a one-way door or a two-way door? Why?** Two-way door. XP is additive — easy to tune values, add decay, or remove entirely. The notification system is opt-in and config can be deleted. No existing functionality was changed; gamification layers on top.
 
 ### Scope decisions
-- **What did you intentionally leave out?**
-- **What would v2 look like?**
+- **What did you intentionally leave out?** Leaderboard (needs auth/multi-user), XP decay for overdue tasks, push notifications, level-up milestones, achievement badges.
+- **What would v2 look like?** XP decay for overdue tasks (tasks lose XP the longer they stay incomplete), leaderboard for teams, achievement badges for milestones (first 100 XP, 7-day streak, etc.), scheduled daily digest notifications listing incomplete high-priority tasks, notification when streak is about to break.
 
 ---
 

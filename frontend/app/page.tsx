@@ -8,16 +8,19 @@ import {
   createTask,
   updateTask,
   deleteTask,
+  completeTask,
+  fetchScore,
   type Task,
   type PaginatedResponse,
   type TaskFilters,
+  type Score,
 } from "@/lib/api";
 
 const PRIORITY_COLORS: Record<string, string> = {
-  low: "bg-gray-100 text-gray-700",
-  medium: "bg-blue-100 text-blue-700",
-  high: "bg-orange-100 text-orange-700",
-  urgent: "bg-red-100 text-red-700",
+  low: "bg-emerald-100 text-emerald-700 border border-emerald-200",
+  medium: "bg-blue-100 text-blue-700 border border-blue-200",
+  high: "bg-orange-100 text-orange-700 border border-orange-200",
+  urgent: "bg-red-100 text-red-700 border border-red-200",
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -58,6 +61,21 @@ function filtersToParams(filters: TaskFilters): string {
   return params.toString();
 }
 
+function XpPopup({ xp, streak }: { xp: number; streak: number }) {
+  return (
+    <div className="fixed top-20 right-8 z-50 animate-bounce">
+      <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-6 py-3 rounded-xl shadow-2xl">
+        <p className="text-2xl font-black">+{xp} XP!</p>
+        {streak > 1 && (
+          <p className="text-sm font-medium opacity-90">
+            Streak x{streak} bonus!
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function TasksPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -65,8 +83,13 @@ export default function TasksPage() {
   const filters = filtersFromParams(searchParams);
 
   const [data, setData] = useState<PaginatedResponse | null>(null);
+  const [score, setScore] = useState<Score | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [xpPopup, setXpPopup] = useState<{
+    xp: number;
+    streak: number;
+  } | null>(null);
   const [newTask, setNewTask] = useState({
     title: "",
     description: "",
@@ -86,9 +109,22 @@ export default function TasksPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams.toString()]);
 
+  const loadScore = useCallback(async () => {
+    try {
+      const s = await fetchScore();
+      setScore(s);
+    } catch (err) {
+      console.error("Failed to fetch score:", err);
+    }
+  }, []);
+
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  useEffect(() => {
+    loadScore();
+  }, [loadScore]);
 
   const setFilters = (updater: (prev: TaskFilters) => TaskFilters) => {
     const next = updater(filters);
@@ -129,6 +165,36 @@ export default function TasksPage() {
     }
   };
 
+  const handleComplete = async (task: Task) => {
+    try {
+      const result = await completeTask(task.id);
+      // Show XP popup
+      setXpPopup({
+        xp: result.xp_awarded + result.streak_bonus,
+        streak: result.streak_count,
+      });
+      setTimeout(() => setXpPopup(null), 2500);
+      // Update score
+      setScore({
+        total_xp: result.total_xp,
+        streak_count: result.streak_count,
+        last_completion_date: null,
+      });
+      // Update task in list
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          tasks: prev.tasks.map((t) =>
+            t.id === task.id ? result.task : t
+          ),
+        };
+      });
+    } catch (err) {
+      console.error("Failed to complete task:", err);
+    }
+  };
+
   const handleDelete = async (taskId: number) => {
     try {
       await deleteTask(taskId);
@@ -140,17 +206,46 @@ export default function TasksPage() {
 
   return (
     <main className="max-w-5xl mx-auto px-4 py-8">
+      {/* XP Popup Animation */}
+      {xpPopup && <XpPopup xp={xpPopup.xp} streak={xpPopup.streak} />}
+
+      {/* Navbar with XP + Streak */}
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Task Manager</h1>
           <p className="text-gray-500 mt-1">Manage your team&apos;s tasks</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3">
+          {/* XP Counter */}
+          {score && (
+            <div className="flex items-center gap-3 mr-2">
+              <div className="flex items-center gap-1.5 bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 px-3 py-1.5 rounded-lg">
+                <span className="text-yellow-600 text-lg">&#9733;</span>
+                <span className="font-bold text-yellow-700">
+                  {score.total_xp} XP
+                </span>
+              </div>
+              {score.streak_count > 0 && (
+                <div className="flex items-center gap-1.5 bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 px-3 py-1.5 rounded-lg">
+                  <span className="text-orange-500 text-lg">&#128293;</span>
+                  <span className="font-bold text-orange-700">
+                    {score.streak_count}d streak
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
           <Link
             href="/dashboard"
             className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             Dashboard
+          </Link>
+          <Link
+            href="/notifications"
+            className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            Alerts
           </Link>
           <button
             onClick={() => setShowCreateForm(!showCreateForm)}
@@ -273,18 +368,33 @@ export default function TasksPage() {
           {data.tasks.map((task) => (
             <div
               key={task.id}
-              className="flex items-center gap-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+              className={`flex items-center gap-4 p-4 border rounded-lg hover:bg-gray-50 transition-all ${
+                task.status === "done"
+                  ? "border-green-200 bg-green-50/30"
+                  : "border-gray-200"
+              }`}
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-medium text-gray-900 truncate">
+                  <h3
+                    className={`font-medium truncate ${
+                      task.status === "done"
+                        ? "text-gray-400 line-through"
+                        : "text-gray-900"
+                    }`}
+                  >
                     {task.title}
                   </h3>
                   <span
-                    className={`px-2 py-0.5 text-xs rounded-full ${PRIORITY_COLORS[task.priority]}`}
+                    className={`px-2 py-0.5 text-xs rounded-full font-medium ${PRIORITY_COLORS[task.priority]}`}
                   >
                     {task.priority}
                   </span>
+                  {task.points > 0 && (
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200 font-medium">
+                      +{task.points} XP
+                    </span>
+                  )}
                 </div>
                 {task.description && (
                   <p className="text-sm text-gray-500 truncate">
@@ -292,6 +402,14 @@ export default function TasksPage() {
                   </p>
                 )}
               </div>
+              {task.status !== "done" && (
+                <button
+                  onClick={() => handleComplete(task)}
+                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm"
+                >
+                  Complete
+                </button>
+              )}
               <select
                 value={task.status}
                 onChange={(e) => handleStatusChange(task, e.target.value)}

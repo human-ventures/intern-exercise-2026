@@ -1,12 +1,16 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import func
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
+import httpx
 
 from database import Base, engine, get_db
-from models import Task, TaskStatus, TaskPriority
-from schemas import TaskCreate, TaskUpdate, TaskResponse, PaginatedResponse, StatsResponse
+from models import Task, TaskStatus, TaskPriority, UserScore, NotificationConfig
+from schemas import (
+    TaskCreate, TaskUpdate, TaskResponse, PaginatedResponse, StatsResponse,
+    ScoreResponse, CompleteTaskResponse,
+    NotificationConfigCreate, NotificationConfigResponse,
+)
 
 Base.metadata.create_all(bind=engine)
 
@@ -19,6 +23,47 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── XP award values ──────────────────────────────────────────────────
+
+XP_BY_PRIORITY = {
+    TaskPriority.LOW: 5,
+    TaskPriority.MEDIUM: 15,
+    TaskPriority.HIGH: 30,
+    TaskPriority.URGENT: 50,
+}
+
+STREAK_BONUS = 10
+
+
+# ── Helpers ───────────────────────────────────────────────────────────
+
+def get_or_create_score(db: Session) -> UserScore:
+    score = db.query(UserScore).first()
+    if not score:
+        score = UserScore(total_xp=0, streak_count=0)
+        db.add(score)
+        db.commit()
+        db.refresh(score)
+    return score
+
+
+async def send_notification(db: Session, message: str):
+    configs = db.query(NotificationConfig).filter(NotificationConfig.enabled == 1).all()
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        for cfg in configs:
+            try:
+                if cfg.service == "discord" and cfg.webhook_url:
+                    await client.post(cfg.webhook_url, json={"content": message})
+                elif cfg.service == "telegram" and cfg.bot_token and cfg.chat_id:
+                    url = f"https://api.telegram.org/bot{cfg.bot_token}/sendMessage"
+                    await client.post(url, json={
+                        "chat_id": cfg.chat_id,
+                        "text": message,
+                        "parse_mode": "HTML",
+                    })
+            except Exception:
+                pass  # don't let notification failures break the app
 
 
 # ── Seed data on startup ──────────────────────────────────────────────
@@ -141,6 +186,126 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
     db.delete(task)
     db.commit()
     return {"message": "Task deleted"}
+
+
+# ── Gamification endpoints ────────────────────────────────────────────
+
+@app.post("/api/tasks/{task_id}/complete", response_model=CompleteTaskResponse)
+async def complete_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status == TaskStatus.DONE:
+        raise HTTPException(status_code=400, detail="Task already completed")
+
+    # Calculate XP
+    base_xp = XP_BY_PRIORITY.get(task.priority, 5)
+    score = get_or_create_score(db)
+
+    # Streak logic
+    today = date.today()
+    streak_bonus = 0
+    if score.last_completion_date:
+        delta = (today - score.last_completion_date).days
+        if delta == 1:
+            score.streak_count += 1
+            streak_bonus = STREAK_BONUS * score.streak_count
+        elif delta > 1:
+            score.streak_count = 1
+        # delta == 0: same day, streak stays, no extra bonus
+    else:
+        score.streak_count = 1
+
+    total_awarded = base_xp + streak_bonus
+
+    # Update task
+    task.status = TaskStatus.DONE
+    task.points = total_awarded
+
+    # Update score
+    score.total_xp += total_awarded
+    score.last_completion_date = today
+
+    db.commit()
+    db.refresh(task)
+    db.refresh(score)
+
+    # Send notification (fire and forget)
+    streak_text = f" | Streak: {score.streak_count} days" if score.streak_count > 1 else ""
+    msg = f"Task completed: {task.title}\n+{total_awarded} XP (base {base_xp}" + \
+          (f" + {streak_bonus} streak bonus" if streak_bonus else "") + \
+          f"){streak_text}\nTotal XP: {score.total_xp}"
+    await send_notification(db, msg)
+
+    return CompleteTaskResponse(
+        task=task,
+        xp_awarded=base_xp,
+        streak_bonus=streak_bonus,
+        total_xp=score.total_xp,
+        streak_count=score.streak_count,
+    )
+
+
+@app.get("/api/users/me/score", response_model=ScoreResponse)
+def get_score(db: Session = Depends(get_db)):
+    score = get_or_create_score(db)
+    # Check if streak is still active (no completion yesterday or today = broken)
+    if score.last_completion_date:
+        delta = (date.today() - score.last_completion_date).days
+        if delta > 1:
+            score.streak_count = 0
+            db.commit()
+            db.refresh(score)
+    return score
+
+
+# ── Notification config endpoints ─────────────────────────────────────
+
+@app.post("/api/notifications/config", response_model=NotificationConfigResponse)
+def create_notification_config(config: NotificationConfigCreate, db: Session = Depends(get_db)):
+    # Replace existing config for the same service
+    existing = db.query(NotificationConfig).filter(NotificationConfig.service == config.service).first()
+    if existing:
+        existing.webhook_url = config.webhook_url
+        existing.bot_token = config.bot_token
+        existing.chat_id = config.chat_id
+        existing.enabled = 1 if config.enabled else 0
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    db_config = NotificationConfig(
+        service=config.service,
+        webhook_url=config.webhook_url,
+        bot_token=config.bot_token,
+        chat_id=config.chat_id,
+        enabled=1 if config.enabled else 0,
+    )
+    db.add(db_config)
+    db.commit()
+    db.refresh(db_config)
+    return db_config
+
+
+@app.get("/api/notifications/config", response_model=list[NotificationConfigResponse])
+def list_notification_configs(db: Session = Depends(get_db)):
+    return db.query(NotificationConfig).all()
+
+
+@app.delete("/api/notifications/config/{config_id}")
+def delete_notification_config(config_id: int, db: Session = Depends(get_db)):
+    cfg = db.query(NotificationConfig).filter(NotificationConfig.id == config_id).first()
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Config not found")
+    db.delete(cfg)
+    db.commit()
+    return {"message": "Notification config deleted"}
+
+
+@app.post("/api/notifications/test")
+async def test_notification(db: Session = Depends(get_db)):
+    await send_notification(db, "Test notification from Task Manager! Your integration is working.")
+    return {"message": "Test notification sent"}
 
 
 # ── Stats endpoint (for Section B) ────────────────────────────────────
