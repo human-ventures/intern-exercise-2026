@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -9,12 +9,49 @@ import {
   updateTask,
   deleteTask,
   completeTask,
+  bulkComplete,
   fetchScore,
   type Task,
   type PaginatedResponse,
   type TaskFilters,
   type Score,
 } from "@/lib/api";
+import axios from "axios";
+
+// ── Toast notification system (D3) ──────────────────────────────────
+
+interface Toast {
+  id: number;
+  message: string;
+  type: "error" | "success";
+}
+
+let toastId = 0;
+
+function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-3 animate-slide-up ${
+            t.type === "error"
+              ? "bg-red-600 text-white"
+              : "bg-green-600 text-white"
+          }`}
+        >
+          <span>{t.type === "error" ? "!" : "\u2713"}</span>
+          <span className="flex-1">{t.message}</span>
+          <button onClick={() => onDismiss(t.id)} className="opacity-70 hover:opacity-100">
+            x
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-emerald-100 text-emerald-700 border border-emerald-200",
@@ -61,6 +98,18 @@ function filtersToParams(filters: TaskFilters): string {
   return params.toString();
 }
 
+function isOverdue(task: Task): boolean {
+  if (!task.due_date || task.status === "done") return false;
+  return new Date(task.due_date) < new Date(new Date().toISOString().split("T")[0]);
+}
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
 function XpPopup({ xp, streak }: { xp: number; streak: number }) {
   return (
     <div className="fixed top-20 right-8 z-50 animate-bounce">
@@ -76,6 +125,23 @@ function XpPopup({ xp, streak }: { xp: number; streak: number }) {
   );
 }
 
+// D4: title validation
+const TITLE_MIN = 1;
+const TITLE_MAX = 200;
+
+function getApiErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const detail = err.response?.data?.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail)) return detail.map((d: { msg: string }) => d.msg).join(", ");
+    if (err.response) return `Server error (${err.response.status})`;
+    if (err.request) return "Network error — is the backend running?";
+  }
+  return "An unexpected error occurred";
+}
+
+// ── Main component ───────────────────────────────────────────────────
+
 export default function TasksPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -86,6 +152,9 @@ export default function TasksPage() {
   const [score, setScore] = useState<Score | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [titleError, setTitleError] = useState<string | null>(null);
   const [xpPopup, setXpPopup] = useState<{
     xp: number;
     streak: number;
@@ -94,7 +163,19 @@ export default function TasksPage() {
     title: "",
     description: "",
     priority: "medium" as const,
+    due_date: "",
   });
+  const xpPopupTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const addToast = (message: string, type: "error" | "success" = "error") => {
+    const id = ++toastId;
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
+  };
+
+  const dismissToast = (id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -102,7 +183,7 @@ export default function TasksPage() {
       const result = await fetchTasks(filters);
       setData(result);
     } catch (err) {
-      console.error("Failed to fetch tasks:", err);
+      addToast(getApiErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -136,15 +217,37 @@ export default function TasksPage() {
     setFilters((prev) => ({ ...prev, [key]: value || undefined, page: 1 }));
   };
 
+  // D4: validate title on change
+  const handleTitleChange = (value: string) => {
+    setNewTask((prev) => ({ ...prev, title: value }));
+    if (value.length > TITLE_MAX) {
+      setTitleError(`Title must be ${TITLE_MAX} characters or fewer (${value.length}/${TITLE_MAX})`);
+    } else if (value.length === 0) {
+      setTitleError("Title is required");
+    } else {
+      setTitleError(null);
+    }
+  };
+
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
+    // D4: frontend validation
+    if (newTask.title.length < TITLE_MIN || newTask.title.length > TITLE_MAX) {
+      setTitleError(`Title must be between ${TITLE_MIN} and ${TITLE_MAX} characters`);
+      return;
+    }
     try {
-      await createTask(newTask);
-      setNewTask({ title: "", description: "", priority: "medium" });
+      await createTask({
+        ...newTask,
+        due_date: newTask.due_date || undefined,
+      } as Partial<Task>);
+      setNewTask({ title: "", description: "", priority: "medium", due_date: "" });
+      setTitleError(null);
       setShowCreateForm(false);
+      addToast("Task created!", "success");
       loadTasks();
     } catch (err) {
-      console.error("Failed to create task:", err);
+      addToast(getApiErrorMessage(err));
     }
   };
 
@@ -161,26 +264,24 @@ export default function TasksPage() {
         };
       });
     } catch (err) {
-      console.error("Failed to update task:", err);
+      addToast(getApiErrorMessage(err));
     }
   };
 
   const handleComplete = async (task: Task) => {
     try {
       const result = await completeTask(task.id);
-      // Show XP popup
+      if (xpPopupTimer.current) clearTimeout(xpPopupTimer.current);
       setXpPopup({
         xp: result.xp_awarded + result.streak_bonus,
         streak: result.streak_count,
       });
-      setTimeout(() => setXpPopup(null), 2500);
-      // Update score
+      xpPopupTimer.current = setTimeout(() => setXpPopup(null), 2500);
       setScore({
         total_xp: result.total_xp,
         streak_count: result.streak_count,
         last_completion_date: null,
       });
-      // Update task in list
       setData((prev) => {
         if (!prev) return prev;
         return {
@@ -191,7 +292,32 @@ export default function TasksPage() {
         };
       });
     } catch (err) {
-      console.error("Failed to complete task:", err);
+      addToast(getApiErrorMessage(err));
+    }
+  };
+
+  // D1: bulk mark all complete
+  const handleBulkComplete = async () => {
+    setBulkLoading(true);
+    try {
+      const result = await bulkComplete();
+      if (xpPopupTimer.current) clearTimeout(xpPopupTimer.current);
+      setXpPopup({
+        xp: result.total_xp_awarded,
+        streak: result.streak_count,
+      });
+      xpPopupTimer.current = setTimeout(() => setXpPopup(null), 2500);
+      setScore({
+        total_xp: result.total_xp,
+        streak_count: result.streak_count,
+        last_completion_date: null,
+      });
+      addToast(`${result.completed_count} tasks completed! +${result.total_xp_awarded} XP`, "success");
+      loadTasks();
+    } catch (err) {
+      addToast(getApiErrorMessage(err));
+    } finally {
+      setBulkLoading(false);
     }
   };
 
@@ -200,12 +326,17 @@ export default function TasksPage() {
       await deleteTask(taskId);
       loadTasks();
     } catch (err) {
-      console.error("Failed to delete task:", err);
+      addToast(getApiErrorMessage(err));
     }
   };
 
+  const hasIncompleteTasks = data?.tasks.some((t) => t.status !== "done");
+
   return (
     <main className="max-w-5xl mx-auto px-4 py-8">
+      {/* D3: Toast notifications */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
       {/* XP Popup Animation */}
       {xpPopup && <XpPopup xp={xpPopup.xp} streak={xpPopup.streak} />}
 
@@ -216,7 +347,6 @@ export default function TasksPage() {
           <p className="text-gray-500 mt-1">Manage your team&apos;s tasks</p>
         </div>
         <div className="flex items-center gap-3">
-          {/* XP Counter */}
           {score && (
             <div className="flex items-center gap-3 mr-2">
               <div className="flex items-center gap-1.5 bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 px-3 py-1.5 rounded-lg">
@@ -262,16 +392,28 @@ export default function TasksPage() {
           className="mb-6 p-4 border border-gray-200 rounded-lg bg-gray-50"
         >
           <div className="grid gap-3">
-            <input
-              type="text"
-              placeholder="Task title"
-              value={newTask.title}
-              onChange={(e) =>
-                setNewTask((prev) => ({ ...prev, title: e.target.value }))
-              }
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              required
-            />
+            {/* D4: title input with validation */}
+            <div>
+              <input
+                type="text"
+                placeholder="Task title (1-200 characters)"
+                value={newTask.title}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                className={`w-full px-3 py-2 border rounded-lg text-sm ${
+                  titleError
+                    ? "border-red-400 focus:ring-red-300"
+                    : "border-gray-300"
+                }`}
+                required
+                maxLength={201}
+              />
+              {titleError && (
+                <p className="text-xs text-red-500 mt-1">{titleError}</p>
+              )}
+              <p className="text-xs text-gray-400 mt-0.5 text-right">
+                {newTask.title.length}/{TITLE_MAX}
+              </p>
+            </div>
             <textarea
               placeholder="Description (optional)"
               value={newTask.description}
@@ -300,9 +442,19 @@ export default function TasksPage() {
                 <option value="high">High</option>
                 <option value="urgent">Urgent</option>
               </select>
+              {/* D2: due date picker */}
+              <input
+                type="date"
+                value={newTask.due_date}
+                onChange={(e) =>
+                  setNewTask((prev) => ({ ...prev, due_date: e.target.value }))
+                }
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              />
               <button
                 type="submit"
-                className="px-4 py-2 text-sm bg-black text-white rounded-lg hover:bg-gray-800"
+                disabled={!!titleError}
+                className="px-4 py-2 text-sm bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
               >
                 Create
               </button>
@@ -318,8 +470,8 @@ export default function TasksPage() {
         </form>
       )}
 
-      {/* Filters */}
-      <div className="flex gap-3 mb-6 flex-wrap">
+      {/* Filters + D1: bulk complete button */}
+      <div className="flex gap-3 mb-6 flex-wrap items-center">
         <input
           type="text"
           placeholder="Search tasks..."
@@ -358,6 +510,16 @@ export default function TasksPage() {
           <option value="title">Sort by Title</option>
           <option value="priority">Sort by Priority</option>
         </select>
+        {/* D1: Mark all complete */}
+        {hasIncompleteTasks && (
+          <button
+            onClick={handleBulkComplete}
+            disabled={bulkLoading}
+            className="ml-auto px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 disabled:opacity-50 shadow-sm"
+          >
+            {bulkLoading ? "Completing..." : "Mark All Complete"}
+          </button>
+        )}
       </div>
 
       {/* Task List */}
@@ -371,6 +533,8 @@ export default function TasksPage() {
               className={`flex items-center gap-4 p-4 border rounded-lg hover:bg-gray-50 transition-all ${
                 task.status === "done"
                   ? "border-green-200 bg-green-50/30"
+                  : isOverdue(task)
+                  ? "border-red-300 bg-red-50/30"
                   : "border-gray-200"
               }`}
             >
@@ -390,17 +554,39 @@ export default function TasksPage() {
                   >
                     {task.priority}
                   </span>
+                  {/* D2: overdue badge */}
+                  {isOverdue(task) && (
+                    <span className="px-2 py-0.5 text-xs rounded-full bg-red-600 text-white font-bold">
+                      OVERDUE
+                    </span>
+                  )}
                   {task.points > 0 && (
                     <span className="px-2 py-0.5 text-xs rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200 font-medium">
                       +{task.points} XP
                     </span>
                   )}
                 </div>
-                {task.description && (
-                  <p className="text-sm text-gray-500 truncate">
-                    {task.description}
-                  </p>
-                )}
+                <div className="flex items-center gap-3">
+                  {task.description && (
+                    <p className="text-sm text-gray-500 truncate">
+                      {task.description}
+                    </p>
+                  )}
+                  {/* D2: due date display */}
+                  {task.due_date && (
+                    <span
+                      className={`text-xs whitespace-nowrap ${
+                        isOverdue(task)
+                          ? "text-red-600 font-medium"
+                          : task.status === "done"
+                          ? "text-gray-400"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      Due {formatDate(task.due_date)}
+                    </span>
+                  )}
+                </div>
               </div>
               {task.status !== "done" && (
                 <button

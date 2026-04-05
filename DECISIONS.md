@@ -66,20 +66,20 @@ Use this document to record your thinking as you work through the exercise. We c
 ## Section D — Feature Requests
 
 ### D1: Bulk mark as complete
-- **Approach chosen:**
-- **Trade-offs considered:**
+- **Approach chosen:** Added a POST /api/tasks/bulk-complete endpoint that completes all non-done tasks in one DB transaction and awards XP for each. Frontend shows "Mark All Complete" button in the filter bar (only visible when there are incomplete tasks). Uses the same streak/XP logic as individual completion.
+- **Trade-offs considered:** Could have done individual API calls per task from the frontend, but a single bulk endpoint is faster and atomic — either all tasks complete or none do. The streak bonus applies once for the whole batch (same rate per task) rather than compounding per task, which is fairer.
 
 ### D2: Due dates and overdue highlighting
-- **Approach chosen:**
-- **Edge cases you considered:**
+- **Approach chosen:** Added `due_date` (nullable Date) column to Task model. Frontend shows "Due Apr 3" next to task descriptions. Tasks past their due date (and not done) get a red "OVERDUE" badge, red border, and red background tint. Date picker in the create form. Seed data includes a mix of past, near-future, and null due dates to demo the feature.
+- **Edge cases you considered:** Null due dates (no badge shown). Completed tasks with past due dates don't show OVERDUE (you finished it, it's fine). Date comparison uses the date portion only (no timezone issues from comparing datetime vs date). Overdue check: `new Date(due_date) < today` — strict past, not including today.
 
 ### D3: Error handling
-- **What types of errors did you handle differently, and why?**
-- **What would you do differently with more time?**
+- **What types of errors did you handle differently, and why?** Built a toast notification system that slides up from the bottom-right. Network errors ("is the backend running?") are distinguished from server errors (show HTTP status) and validation errors (show the detail message from FastAPI). Success toasts (green) for task creation and bulk complete. Error toasts (red) auto-dismiss after 4 seconds but can be manually closed. Used axios interceptor pattern to extract error messages from different response shapes (string detail vs array of validation errors).
+- **What would you do differently with more time?** Add retry logic for transient network errors, stack deduplication (don't show the same error twice), and a global error boundary for React crashes.
 
 ### D4: Input validation
-- **Where did you add validation and why?**
-- **How did you ensure consistency?**
+- **Where did you add validation and why?** Both frontend and backend. Backend: Pydantic `Field(min_length=1, max_length=200)` on TaskCreate.title and TaskUpdate.title — this is the source of truth and returns 422 with clear error messages. Frontend: live character counter (0/200), red border + error message when exceeding limit, submit button disabled when invalid. This gives immediate feedback without waiting for a server round-trip.
+- **How did you ensure consistency?** Same limits (1-200) enforced in both places. Frontend validation prevents most invalid submissions; backend validation catches anything that slips through (API calls, curl, etc.). The error message from FastAPI's 422 is extracted and shown in the toast if it does reach the server.
 
 ---
 

@@ -11,6 +11,7 @@ export interface Task {
   status: "todo" | "in_progress" | "done";
   priority: "low" | "medium" | "high" | "urgent";
   points: number;
+  due_date: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -98,6 +99,18 @@ export async function updateTask(
 
 export async function deleteTask(id: number): Promise<void> {
   await api.delete(`/api/tasks/${id}`);
+}
+
+export interface BulkCompleteResult {
+  completed_count: number;
+  total_xp_awarded: number;
+  total_xp: number;
+  streak_count: number;
+}
+
+export async function bulkComplete(): Promise<BulkCompleteResult> {
+  const { data } = await api.post("/api/tasks/bulk-complete");
+  return data;
 }
 
 export async function completeTask(id: number): Promise<CompleteTaskResult> {

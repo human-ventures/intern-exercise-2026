@@ -8,7 +8,7 @@ from database import Base, engine, get_db
 from models import Task, TaskStatus, TaskPriority, UserScore, NotificationConfig
 from schemas import (
     TaskCreate, TaskUpdate, TaskResponse, PaginatedResponse, StatsResponse,
-    ScoreResponse, CompleteTaskResponse,
+    ScoreResponse, CompleteTaskResponse, BulkCompleteResponse,
     NotificationConfigCreate, NotificationConfigResponse,
 )
 
@@ -75,26 +75,26 @@ def seed_data():
         seeds = [
             Task(title="Set up CI/CD pipeline", description="Configure GitHub Actions for automated testing and deployment", status=TaskStatus.DONE, priority=TaskPriority.HIGH),
             Task(title="Design database schema", description="Create ERD and define all tables for the project", status=TaskStatus.DONE, priority=TaskPriority.HIGH),
-            Task(title="Implement user authentication", description="Add JWT-based auth with login and signup endpoints", status=TaskStatus.IN_PROGRESS, priority=TaskPriority.HIGH),
-            Task(title="Write API documentation", description="Document all endpoints using OpenAPI/Swagger", status=TaskStatus.TODO, priority=TaskPriority.MEDIUM),
-            Task(title="Add input validation", description="Validate all user inputs on both frontend and backend", status=TaskStatus.TODO, priority=TaskPriority.MEDIUM),
+            Task(title="Implement user authentication", description="Add JWT-based auth with login and signup endpoints", status=TaskStatus.IN_PROGRESS, priority=TaskPriority.HIGH, due_date=date(2026, 4, 8)),
+            Task(title="Write API documentation", description="Document all endpoints using OpenAPI/Swagger", status=TaskStatus.TODO, priority=TaskPriority.MEDIUM, due_date=date(2026, 4, 3)),
+            Task(title="Add input validation", description="Validate all user inputs on both frontend and backend", status=TaskStatus.TODO, priority=TaskPriority.MEDIUM, due_date=date(2026, 4, 10)),
             Task(title="Set up error monitoring", description="Integrate Sentry or similar error tracking service", status=TaskStatus.TODO, priority=TaskPriority.LOW),
-            Task(title="Create onboarding flow", description="Build a step-by-step onboarding experience for new users", status=TaskStatus.TODO, priority=TaskPriority.MEDIUM),
-            Task(title="Optimize database queries", description="Review and optimize slow queries, add proper indexes", status=TaskStatus.IN_PROGRESS, priority=TaskPriority.HIGH),
+            Task(title="Create onboarding flow", description="Build a step-by-step onboarding experience for new users", status=TaskStatus.TODO, priority=TaskPriority.MEDIUM, due_date=date(2026, 4, 15)),
+            Task(title="Optimize database queries", description="Review and optimize slow queries, add proper indexes", status=TaskStatus.IN_PROGRESS, priority=TaskPriority.HIGH, due_date=date(2026, 4, 1)),
             Task(title="Add export to CSV feature", description="Allow users to export their task list as a CSV file", status=TaskStatus.TODO, priority=TaskPriority.LOW),
             Task(title="Implement dark mode", description="Add dark mode toggle with system preference detection", status=TaskStatus.TODO, priority=TaskPriority.LOW),
-            Task(title="Write unit tests", description="Achieve 80% code coverage with unit tests", status=TaskStatus.IN_PROGRESS, priority=TaskPriority.MEDIUM),
+            Task(title="Write unit tests", description="Achieve 80% code coverage with unit tests", status=TaskStatus.IN_PROGRESS, priority=TaskPriority.MEDIUM, due_date=date(2026, 4, 7)),
             Task(title="Mobile responsive design", description="Ensure all pages work well on mobile devices", status=TaskStatus.TODO, priority=TaskPriority.MEDIUM),
             Task(title="Add search functionality", description="Full-text search across task titles and descriptions", status=TaskStatus.TODO, priority=TaskPriority.MEDIUM),
             Task(title="Performance audit", description="Run Lighthouse audit and fix performance issues", status=TaskStatus.TODO, priority=TaskPriority.LOW),
-            Task(title="Deploy to production", description="Set up production environment and deploy v1.0", status=TaskStatus.TODO, priority=TaskPriority.URGENT),
-            Task(title="Security review", description="Conduct security audit and fix vulnerabilities", status=TaskStatus.TODO, priority=TaskPriority.URGENT),
+            Task(title="Deploy to production", description="Set up production environment and deploy v1.0", status=TaskStatus.TODO, priority=TaskPriority.URGENT, due_date=date(2026, 4, 2)),
+            Task(title="Security review", description="Conduct security audit and fix vulnerabilities", status=TaskStatus.TODO, priority=TaskPriority.URGENT, due_date=date(2026, 4, 4)),
             Task(title="Create admin dashboard", description="Build admin panel for user management and analytics", status=TaskStatus.TODO, priority=TaskPriority.MEDIUM),
             Task(title="Add notification system", description="Email and in-app notifications for task updates", status=TaskStatus.TODO, priority=TaskPriority.LOW),
             Task(title="Implement rate limiting", description="Add rate limiting to prevent API abuse", status=TaskStatus.IN_PROGRESS, priority=TaskPriority.HIGH),
             Task(title="Code review guidelines", description="Document code review process and standards", status=TaskStatus.DONE, priority=TaskPriority.MEDIUM),
             Task(title="Load testing", description="Run load tests and identify bottlenecks", status=TaskStatus.TODO, priority=TaskPriority.MEDIUM),
-            Task(title="Backup strategy", description="Implement automated database backup solution", status=TaskStatus.TODO, priority=TaskPriority.HIGH),
+            Task(title="Backup strategy", description="Implement automated database backup solution", status=TaskStatus.TODO, priority=TaskPriority.HIGH, due_date=date(2026, 4, 6)),
             Task(title="Accessibility audit", description="Ensure WCAG 2.1 AA compliance", status=TaskStatus.TODO, priority=TaskPriority.MEDIUM),
         ]
         db.add_all(seeds)
@@ -241,6 +241,51 @@ async def complete_task(task_id: int, db: Session = Depends(get_db)):
         task=task,
         xp_awarded=base_xp,
         streak_bonus=streak_bonus,
+        total_xp=score.total_xp,
+        streak_count=score.streak_count,
+    )
+
+
+@app.post("/api/tasks/bulk-complete", response_model=BulkCompleteResponse)
+async def bulk_complete_tasks(db: Session = Depends(get_db)):
+    tasks = db.query(Task).filter(Task.status != TaskStatus.DONE).all()
+    if not tasks:
+        raise HTTPException(status_code=400, detail="No incomplete tasks to complete")
+
+    score = get_or_create_score(db)
+    today = date.today()
+    total_awarded = 0
+
+    # Streak logic (once for the batch)
+    streak_bonus_rate = 0
+    if score.last_completion_date:
+        delta = (today - score.last_completion_date).days
+        if delta == 1:
+            score.streak_count += 1
+            streak_bonus_rate = STREAK_BONUS * score.streak_count
+        elif delta > 1:
+            score.streak_count = 1
+    else:
+        score.streak_count = 1
+
+    for task in tasks:
+        base_xp = XP_BY_PRIORITY.get(task.priority, 5)
+        awarded = base_xp + streak_bonus_rate
+        task.status = TaskStatus.DONE
+        task.points = awarded
+        total_awarded += awarded
+
+    score.total_xp += total_awarded
+    score.last_completion_date = today
+    db.commit()
+    db.refresh(score)
+
+    msg = f"Bulk complete: {len(tasks)} tasks done!\n+{total_awarded} XP total\nTotal XP: {score.total_xp}"
+    await send_notification(db, msg)
+
+    return BulkCompleteResponse(
+        completed_count=len(tasks),
+        total_xp_awarded=total_awarded,
         total_xp=score.total_xp,
         streak_count=score.streak_count,
     )
