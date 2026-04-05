@@ -36,9 +36,9 @@ Use this document to record your thinking as you work through the exercise. We c
 - **What would you do differently with more time?** Add debouncing on the search input so it doesn't push a new URL on every keystroke. Could also add URL validation to handle manually-typed invalid query params gracefully.
 
 ### B2: Dashboard charts
-- **Library/approach chosen and why:**
-- **Design decisions:**
-- **What would you do differently with more time?**
+- **Library/approach chosen and why:** Recharts (already installed). It's React-native, composable, and renders as SVG so charts are crisp at any resolution. Used ResponsiveContainer for all charts so they adapt to screen width.
+- **Design decisions:** Built 5 visual components: (1) donut PieChart for task status — inner radius gives space for a cleaner look than a full pie; (2) color-coded BarChart for priority with rounded corners; (3) RadialBarChart showing completion percentage as a circular progress ring; (4-5) horizontal progress bar breakdowns for both status and priority below the charts, giving exact counts + percentages. Custom tooltip component for consistent styling. Colors are semantically meaningful: green=done, yellow=in-progress, gray=todo, red gradient for priority levels.
+- **What would you do differently with more time?** Add animated transitions when data changes, a time-series line chart showing task completion trends over weeks, and make the charts interactive (click a bar to filter the task list).
 
 ---
 
