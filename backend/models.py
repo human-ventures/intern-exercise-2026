@@ -27,4 +27,4 @@ class Task(Base):
     status = Column(SQLEnum(TaskStatus), default=TaskStatus.TODO)
     priority = Column(SQLEnum(TaskPriority), default=TaskPriority.MEDIUM)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

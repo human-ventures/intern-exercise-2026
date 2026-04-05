@@ -58,7 +58,7 @@ export default function TasksPage() {
   }, [loadTasks]);
 
   const handleFilterChange = (key: string, value: string) => {
-    setFilters((prev) => ({ ...prev, [key]: value || undefined }));
+    setFilters((prev) => ({ ...prev, [key]: value || undefined, page: 1 }));
   };
 
   const handleCreateTask = async (e: React.FormEvent) => {

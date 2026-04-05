@@ -87,7 +87,7 @@ def list_tasks(
 
     total = query.count()
 
-    tasks = query.offset(page * per_page).limit(per_page).all()
+    tasks = query.offset((page - 1) * per_page).limit(per_page).all()
 
     total_pages = (total + per_page - 1) // per_page
 
@@ -114,7 +114,7 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
 def get_task(task_id: int, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=400, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Task not found")
     return task
 
 
@@ -122,7 +122,7 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
 def update_task(task_id: int, task_update: TaskUpdate, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=400, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Task not found")
 
     update_data = task_update.model_dump(exclude_unset=True)
     for field, value in update_data.items():
@@ -137,7 +137,7 @@ def update_task(task_id: int, task_update: TaskUpdate, db: Session = Depends(get
 def delete_task(task_id: int, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=400, detail="Task not found")
+        raise HTTPException(status_code=404, detail="Task not found")
     db.delete(task)
     db.commit()
     return {"message": "Task deleted"}
