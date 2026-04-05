@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   fetchTasks,
@@ -25,14 +26,45 @@ const STATUS_COLORS: Record<string, string> = {
   done: "bg-green-100 text-green-700",
 };
 
-export default function TasksPage() {
-  const [data, setData] = useState<PaginatedResponse | null>(null);
-  const [filters, setFilters] = useState<TaskFilters>({
-    page: 1,
-    per_page: 10,
-    sort_by: "created_at",
-    sort_order: "desc",
+const DEFAULTS: TaskFilters = {
+  page: 1,
+  per_page: 10,
+  sort_by: "created_at",
+  sort_order: "desc",
+};
+
+function filtersFromParams(params: URLSearchParams): TaskFilters {
+  return {
+    page: Number(params.get("page")) || DEFAULTS.page,
+    per_page: Number(params.get("per_page")) || DEFAULTS.per_page,
+    sort_by: params.get("sort_by") || DEFAULTS.sort_by,
+    sort_order: params.get("sort_order") || DEFAULTS.sort_order,
+    status: params.get("status") || undefined,
+    priority: params.get("priority") || undefined,
+    search: params.get("search") || undefined,
+  };
+}
+
+function filtersToParams(filters: TaskFilters): string {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      const defaultVal = (DEFAULTS as Record<string, unknown>)[key];
+      if (String(value) !== String(defaultVal)) {
+        params.set(key, String(value));
+      }
+    }
   });
+  return params.toString();
+}
+
+export default function TasksPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const filters = filtersFromParams(searchParams);
+
+  const [data, setData] = useState<PaginatedResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newTask, setNewTask] = useState({
@@ -51,11 +83,18 @@ export default function TasksPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.toString()]);
 
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  const setFilters = (updater: (prev: TaskFilters) => TaskFilters) => {
+    const next = updater(filters);
+    const qs = filtersToParams(next);
+    router.push(qs ? `/?${qs}` : "/");
+  };
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value || undefined, page: 1 }));
@@ -189,10 +228,12 @@ export default function TasksPage() {
         <input
           type="text"
           placeholder="Search tasks..."
+          value={filters.search || ""}
           onChange={(e) => handleFilterChange("search", e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-64"
         />
         <select
+          value={filters.status || ""}
           onChange={(e) => handleFilterChange("status", e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
         >
@@ -202,6 +243,7 @@ export default function TasksPage() {
           <option value="done">Done</option>
         </select>
         <select
+          value={filters.priority || ""}
           onChange={(e) => handleFilterChange("priority", e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
         >
@@ -212,6 +254,7 @@ export default function TasksPage() {
           <option value="urgent">Urgent</option>
         </select>
         <select
+          value={filters.sort_by || "created_at"}
           onChange={(e) => handleFilterChange("sort_by", e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
         >

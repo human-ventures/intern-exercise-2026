@@ -31,9 +31,9 @@ Use this document to record your thinking as you work through the exercise. We c
 ## Section B — New Features
 
 ### B1: URL-based filtering
-- **Approach chosen:**
-- **Trade-offs considered:**
-- **What would you do differently with more time?**
+- **Approach chosen:** Replaced useState-based filters with useSearchParams (read) + router.push (write). Filters are derived from the URL on every render — no local state duplication. Default values (page=1, sort_by=created_at, etc.) are omitted from the URL to keep it clean; only non-default values appear as query params.
+- **Trade-offs considered:** Could have used `router.replace` instead of `router.push` for filter changes to avoid cluttering browser history. Chose `push` so that back/forward buttons work as expected — each filter change is a navigable history entry. Also considered shallow routing but Next.js App Router handles this well with useSearchParams.
+- **What would you do differently with more time?** Add debouncing on the search input so it doesn't push a new URL on every keystroke. Could also add URL validation to handle manually-typed invalid query params gracefully.
 
 ### B2: Dashboard charts
 - **Library/approach chosen and why:**
