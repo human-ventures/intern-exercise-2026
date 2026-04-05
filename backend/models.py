@@ -41,6 +41,15 @@ class UserScore(Base):
     last_completion_date = Column(Date, nullable=True)
 
 
+class TaskReminder(Base):
+    __tablename__ = "task_reminders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    task_id = Column(Integer, nullable=False)
+    remind_at = Column(DateTime, nullable=False)
+    sent = Column(Integer, default=0)  # 0=pending, 1=sent
+
+
 class NotificationConfig(Base):
     __tablename__ = "notification_config"
 

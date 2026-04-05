@@ -4,13 +4,16 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta, date
 import httpx
 import asyncio
-import threading
+import logging
+
+logger = logging.getLogger("taskmanager")
 
 from database import Base, engine, get_db
-from models import Task, TaskStatus, TaskPriority, UserScore, NotificationConfig
+from models import Task, TaskStatus, TaskPriority, UserScore, NotificationConfig, TaskReminder
 from schemas import (
     TaskCreate, TaskUpdate, TaskResponse, PaginatedResponse, StatsResponse,
     ScoreResponse, CompleteTaskResponse, BulkCompleteResponse,
+    ReminderCreate, ReminderResponse,
     NotificationConfigCreate, NotificationConfigResponse,
 )
 
@@ -64,8 +67,8 @@ async def send_notification(db: Session, message: str):
                         "text": message,
                         "parse_mode": "HTML",
                     })
-            except Exception:
-                pass  # don't let notification failures break the app
+            except Exception as e:
+                logger.warning(f"Notification failed ({cfg.service}): {e}")
 
 
 # ── Seed data on startup ──────────────────────────────────────────────
@@ -153,14 +156,47 @@ async def _send_due_date_reminders():
         db.close()
 
 
+async def _process_custom_reminders():
+    """Check for custom reminders that are due and send notifications."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        pending = (
+            db.query(TaskReminder)
+            .filter(TaskReminder.sent == 0, TaskReminder.remind_at <= now)
+            .all()
+        )
+        for reminder in pending:
+            task = db.query(Task).filter(Task.id == reminder.task_id).first()
+            if task and task.status != TaskStatus.DONE:
+                due_text = f"\nDue: {task.due_date}" if task.due_date else ""
+                msg = f"Reminder: {task.title}\nPriority: {task.priority.value}{due_text}\nStatus: {task.status.value}"
+                await send_notification(db, msg)
+            reminder.sent = 1
+        db.commit()
+    except Exception as e:
+        logger.warning(f"Custom reminder processing failed: {e}")
+    finally:
+        db.close()
+
+
 async def _reminder_loop():
-    """Background loop that sends reminders periodically."""
+    """Background loop — custom reminders every 30s, due-date reminders every hour."""
+    due_date_counter = 0
     while True:
-        await asyncio.sleep(REMINDER_INTERVAL_SECONDS)
+        await asyncio.sleep(30)
         try:
-            await _send_due_date_reminders()
+            await _process_custom_reminders()
         except Exception:
-            pass  # don't crash the loop
+            pass
+        due_date_counter += 30
+        if due_date_counter >= REMINDER_INTERVAL_SECONDS:
+            due_date_counter = 0
+            try:
+                await _send_due_date_reminders()
+            except Exception:
+                pass
 
 
 @app.on_event("startup")
@@ -174,6 +210,29 @@ async def trigger_reminder():
     """Manually trigger a due-date reminder check."""
     await _send_due_date_reminders()
     return {"message": "Reminder check sent"}
+
+
+# ── Task reminder endpoints ───────────────────────────────────────────
+
+@app.post("/api/tasks/{task_id}/remind", response_model=ReminderResponse)
+def create_reminder(task_id: int, body: ReminderCreate, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status == TaskStatus.DONE:
+        raise HTTPException(status_code=400, detail="Task already completed")
+
+    remind_at = datetime.now(timezone.utc) + timedelta(minutes=body.remind_in_minutes)
+    reminder = TaskReminder(task_id=task_id, remind_at=remind_at)
+    db.add(reminder)
+    db.commit()
+    db.refresh(reminder)
+    return reminder
+
+
+@app.get("/api/tasks/{task_id}/reminders", response_model=list[ReminderResponse])
+def list_reminders(task_id: int, db: Session = Depends(get_db)):
+    return db.query(TaskReminder).filter(TaskReminder.task_id == task_id, TaskReminder.sent == 0).all()
 
 
 # ── CRUD endpoints ─────────────────────────────────────────────────────

@@ -73,6 +73,20 @@ class BulkCompleteResponse(BaseModel):
     streak_count: int
 
 
+class ReminderCreate(BaseModel):
+    task_id: int
+    remind_in_minutes: int  # e.g. 5, 15, 30, 60
+
+
+class ReminderResponse(BaseModel):
+    id: int
+    task_id: int
+    remind_at: datetime
+    sent: bool
+
+    model_config = {"from_attributes": True}
+
+
 class NotificationConfigCreate(BaseModel):
     service: str  # "discord" or "telegram"
     webhook_url: Optional[str] = None

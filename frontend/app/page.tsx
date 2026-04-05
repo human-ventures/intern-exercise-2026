@@ -11,6 +11,7 @@ import {
   completeTask,
   bulkComplete,
   fetchScore,
+  setTaskReminder,
   type Task,
   type PaginatedResponse,
   type TaskFilters,
@@ -326,6 +327,15 @@ export default function TasksPage() {
     }
   };
 
+  const handleRemind = async (taskId: number, minutes: number) => {
+    try {
+      await setTaskReminder(taskId, minutes);
+      addToast(`Reminder set for ${minutes} min from now`, "success");
+    } catch (err) {
+      addToast(getApiErrorMessage(err));
+    }
+  };
+
   const handleDelete = async (taskId: number) => {
     try {
       await deleteTask(taskId);
@@ -597,12 +607,34 @@ export default function TasksPage() {
               </div>
               <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
                 {task.status !== "done" && (
-                  <button
-                    onClick={() => handleComplete(task)}
-                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm"
-                  >
-                    Complete
-                  </button>
+                  <>
+                    <button
+                      onClick={() => handleComplete(task)}
+                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm"
+                    >
+                      Complete
+                    </button>
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          handleRemind(task.id, Number(e.target.value));
+                          e.target.value = "";
+                        }
+                      }}
+                      className="px-2 py-1.5 text-xs rounded-lg border border-orange-200 bg-orange-50 text-orange-700 cursor-pointer"
+                    >
+                      <option value="" disabled>
+                        Remind
+                      </option>
+                      <option value="5">5 min</option>
+                      <option value="15">15 min</option>
+                      <option value="30">30 min</option>
+                      <option value="60">1 hour</option>
+                      <option value="180">3 hours</option>
+                      <option value="1440">Tomorrow</option>
+                    </select>
+                  </>
                 )}
                 <select
                   value={task.status}

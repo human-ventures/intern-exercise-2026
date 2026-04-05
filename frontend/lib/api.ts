@@ -155,3 +155,13 @@ export async function testNotification(): Promise<void> {
 export async function triggerReminder(): Promise<void> {
   await api.post("/api/notifications/remind");
 }
+
+export async function setTaskReminder(
+  taskId: number,
+  minutes: number
+): Promise<void> {
+  await api.post(`/api/tasks/${taskId}/remind`, {
+    task_id: taskId,
+    remind_in_minutes: minutes,
+  });
+}
