@@ -87,6 +87,10 @@ Use this document to record your thinking as you work through the exercise. We c
 - **Approach chosen:** Made all three pages (tasks, dashboard, notifications) fully responsive using Tailwind's `sm:` and `md:` breakpoints. No media queries or separate mobile layouts — just responsive utility classes that adapt the existing desktop layout.
 - **Key changes:** Navbar stacks vertically on mobile with wrapped XP/streak badges and smaller buttons. Task cards switch from horizontal to vertical layout on small screens with action buttons in a separate row. Dashboard summary cards go from 4-col to 2-col grid, charts from 3-col to stacked single column, breakdown tables from side-by-side to stacked. Filter bar wraps naturally with full-width search on mobile. Create form buttons span full width on mobile. Toasts use full-width on mobile, fixed-width on desktop. XP popup adjusts positioning.
 
+### Extra: Landing page
+- **Approach chosen:** Built a marketing-style landing page at /landing using the Infinite Grid animated background component (framer-motion) as the hero. Integrated lucide-react icons for feature cards. Added shadcn-compatible CSS variables (@theme in Tailwind v4) and a cn() utility (clsx + tailwind-merge).
+- **Structure:** Hero with animated grid + gradient blobs, stats bar, 9 feature cards (grid layout), XP system explainer with priority tiers, integrations section (Discord/Telegram), CTA, and footer. All sections use scroll-triggered fade-in animations via framer-motion useInView. Fully responsive across mobile, tablet, and desktop.
+
 ---
 
 ## General Notes
