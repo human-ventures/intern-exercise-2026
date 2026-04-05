@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session  # used by Depends(get_db)
 from datetime import datetime, timezone, timedelta, date
 import httpx
 import asyncio
@@ -8,7 +8,7 @@ import logging
 
 logger = logging.getLogger("taskmanager")
 
-from database import Base, engine, get_db
+from database import Base, engine, get_db, SessionLocal
 from models import Task, TaskStatus, TaskPriority, UserScore, NotificationConfig, TaskReminder
 from schemas import (
     TaskCreate, TaskUpdate, TaskResponse, PaginatedResponse, StatsResponse,
@@ -75,7 +75,7 @@ async def send_notification(db: Session, message: str):
 
 @app.on_event("startup")
 def seed_data():
-    db = Session(bind=engine)
+    db = SessionLocal()
     if db.query(Task).count() == 0:
         seeds = [
             Task(title="Set up CI/CD pipeline", description="Configure GitHub Actions for automated testing and deployment", status=TaskStatus.DONE, priority=TaskPriority.HIGH),
@@ -113,7 +113,6 @@ REMINDER_INTERVAL_SECONDS = 3600  # check every hour
 
 async def _send_due_date_reminders():
     """Send notifications for tasks due today or tomorrow."""
-    from database import SessionLocal
     db = SessionLocal()
     try:
         today = date.today()
@@ -121,7 +120,7 @@ async def _send_due_date_reminders():
 
         overdue = (
             db.query(Task)
-            .filter(Task.status != TaskStatus.DONE, Task.due_date != None, Task.due_date < today)
+            .filter(Task.status != TaskStatus.DONE, Task.due_date.isnot(None), Task.due_date < today)
             .all()
         )
         due_today = (
@@ -158,7 +157,6 @@ async def _send_due_date_reminders():
 
 async def _process_custom_reminders():
     """Check for custom reminders that are due and send notifications."""
-    from database import SessionLocal
     db = SessionLocal()
     try:
         now = datetime.now(timezone.utc)
@@ -244,7 +242,7 @@ def list_tasks(
     status: TaskStatus | None = None,
     priority: TaskPriority | None = None,
     search: str | None = None,
-    sort_by: str = Query("created_at", pattern="^(created_at|updated_at|title|priority|status)$"),
+    sort_by: str = Query("created_at", pattern="^(created_at|updated_at|title|priority|status|due_date)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
 ):

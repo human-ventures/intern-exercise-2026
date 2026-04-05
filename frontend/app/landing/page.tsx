@@ -13,7 +13,6 @@ import {
 import {
   CheckCircle2,
   BarChart3,
-  Zap,
   Bell,
   Calendar,
   ListChecks,

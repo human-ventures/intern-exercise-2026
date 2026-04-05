@@ -74,7 +74,6 @@ class BulkCompleteResponse(BaseModel):
 
 
 class ReminderCreate(BaseModel):
-    task_id: int
     remind_in_minutes: int  # e.g. 5, 15, 30, 60
 
 

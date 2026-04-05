@@ -101,7 +101,12 @@ function filtersToParams(filters: TaskFilters): string {
 
 function isOverdue(task: Task): boolean {
   if (!task.due_date || task.status === "done") return false;
-  return new Date(task.due_date) < new Date(new Date().toISOString().split("T")[0]);
+  // Parse due_date as local date (YYYY-MM-DD) to avoid UTC midnight offset issues
+  const [y, m, d] = task.due_date.split("-").map(Number);
+  const due = new Date(y, m - 1, d);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return due < today;
 }
 
 function formatDate(dateStr: string): string {
@@ -615,11 +620,10 @@ export default function TasksPage() {
                       Complete
                     </button>
                     <select
-                      defaultValue=""
+                      value=""
                       onChange={(e) => {
                         if (e.target.value) {
                           handleRemind(task.id, Number(e.target.value));
-                          e.target.value = "";
                         }
                       }}
                       className="px-2 py-1.5 text-xs rounded-lg border border-orange-200 bg-orange-50 text-orange-700 cursor-pointer"

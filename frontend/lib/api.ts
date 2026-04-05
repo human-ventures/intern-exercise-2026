@@ -161,7 +161,6 @@ export async function setTaskReminder(
   minutes: number
 ): Promise<void> {
   await api.post(`/api/tasks/${taskId}/remind`, {
-    task_id: taskId,
     remind_in_minutes: minutes,
   });
 }
