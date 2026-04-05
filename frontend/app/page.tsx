@@ -30,7 +30,7 @@ let toastId = 0;
 
 function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
+    <div className="fixed bottom-4 right-4 left-4 sm:left-auto sm:right-6 sm:bottom-6 z-50 flex flex-col gap-2">
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -112,7 +112,7 @@ function formatDate(dateStr: string): string {
 
 function XpPopup({ xp, streak }: { xp: number; streak: number }) {
   return (
-    <div className="fixed top-20 right-8 z-50 animate-bounce">
+    <div className="fixed top-20 right-4 sm:right-8 z-50 animate-bounce">
       <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-6 py-3 rounded-xl shadow-2xl">
         <p className="text-2xl font-black">+{xp} XP!</p>
         {streak > 1 && (
@@ -159,13 +159,18 @@ export default function TasksPage() {
     xp: number;
     streak: number;
   } | null>(null);
-  const [newTask, setNewTask] = useState({
+  const [newTask, setNewTask] = useState<{
+    title: string;
+    description: string;
+    priority: Task["priority"];
+    due_date: string;
+  }>({
     title: "",
     description: "",
-    priority: "medium" as const,
+    priority: "medium",
     due_date: "",
   });
-  const xpPopupTimer = useRef<ReturnType<typeof setTimeout>>();
+  const xpPopupTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const addToast = (message: string, type: "error" | "success" = "error") => {
     const id = ++toastId;
@@ -341,25 +346,25 @@ export default function TasksPage() {
       {xpPopup && <XpPopup xp={xpPopup.xp} streak={xpPopup.streak} />}
 
       {/* Navbar with XP + Streak */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Task Manager</h1>
           <p className="text-gray-500 mt-1">Manage your team&apos;s tasks</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           {score && (
-            <div className="flex items-center gap-3 mr-2">
-              <div className="flex items-center gap-1.5 bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 px-3 py-1.5 rounded-lg">
-                <span className="text-yellow-600 text-lg">&#9733;</span>
-                <span className="font-bold text-yellow-700">
+            <div className="flex items-center gap-2 mr-1">
+              <div className="flex items-center gap-1.5 bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 px-2.5 py-1.5 rounded-lg">
+                <span className="text-yellow-600 text-base sm:text-lg">&#9733;</span>
+                <span className="font-bold text-yellow-700 text-sm">
                   {score.total_xp} XP
                 </span>
               </div>
               {score.streak_count > 0 && (
-                <div className="flex items-center gap-1.5 bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 px-3 py-1.5 rounded-lg">
-                  <span className="text-orange-500 text-lg">&#128293;</span>
-                  <span className="font-bold text-orange-700">
-                    {score.streak_count}d streak
+                <div className="flex items-center gap-1.5 bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200 px-2.5 py-1.5 rounded-lg">
+                  <span className="text-orange-500 text-base sm:text-lg">&#128293;</span>
+                  <span className="font-bold text-orange-700 text-sm">
+                    {score.streak_count}d
                   </span>
                 </div>
               )}
@@ -367,19 +372,19 @@ export default function TasksPage() {
           )}
           <Link
             href="/dashboard"
-            className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             Dashboard
           </Link>
           <Link
             href="/notifications"
-            className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             Alerts
           </Link>
           <button
             onClick={() => setShowCreateForm(!showCreateForm)}
-            className="px-4 py-2 text-sm bg-black text-white rounded-lg hover:bg-gray-800"
+            className="px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm bg-black text-white rounded-lg hover:bg-gray-800"
           >
             + New Task
           </button>
@@ -426,7 +431,7 @@ export default function TasksPage() {
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
               rows={2}
             />
-            <div className="flex gap-3 items-center">
+            <div className="flex flex-wrap gap-3 items-center">
               <select
                 value={newTask.priority}
                 onChange={(e) =>
@@ -435,7 +440,7 @@ export default function TasksPage() {
                     priority: e.target.value as Task["priority"],
                   }))
                 }
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm flex-1 min-w-[120px]"
               >
                 <option value="low">Low</option>
                 <option value="medium">Medium</option>
@@ -449,35 +454,37 @@ export default function TasksPage() {
                 onChange={(e) =>
                   setNewTask((prev) => ({ ...prev, due_date: e.target.value }))
                 }
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm flex-1 min-w-[140px]"
               />
-              <button
-                type="submit"
-                disabled={!!titleError}
-                className="px-4 py-2 text-sm bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
-              >
-                Create
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowCreateForm(false)}
-                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <button
+                  type="submit"
+                  disabled={!!titleError}
+                  className="flex-1 sm:flex-none px-4 py-2 text-sm bg-black text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                >
+                  Create
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(false)}
+                  className="flex-1 sm:flex-none px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </form>
       )}
 
       {/* Filters + D1: bulk complete button */}
-      <div className="flex gap-3 mb-6 flex-wrap items-center">
+      <div className="flex gap-2 sm:gap-3 mb-6 flex-wrap items-center">
         <input
           type="text"
           placeholder="Search tasks..."
           value={filters.search || ""}
           onChange={(e) => handleFilterChange("search", e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-64"
+          className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-full sm:w-64"
         />
         <select
           value={filters.status || ""}
@@ -530,7 +537,7 @@ export default function TasksPage() {
           {data.tasks.map((task) => (
             <div
               key={task.id}
-              className={`flex items-center gap-4 p-4 border rounded-lg hover:bg-gray-50 transition-all ${
+              className={`flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 border rounded-lg hover:bg-gray-50 transition-all ${
                 task.status === "done"
                   ? "border-green-200 bg-green-50/30"
                   : isOverdue(task)
@@ -539,7 +546,7 @@ export default function TasksPage() {
               }`}
             >
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <h3
                     className={`font-medium truncate ${
                       task.status === "done"
@@ -566,9 +573,9 @@ export default function TasksPage() {
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   {task.description && (
-                    <p className="text-sm text-gray-500 truncate">
+                    <p className="text-sm text-gray-500 truncate max-w-full">
                       {task.description}
                     </p>
                   )}
@@ -588,29 +595,31 @@ export default function TasksPage() {
                   )}
                 </div>
               </div>
-              {task.status !== "done" && (
-                <button
-                  onClick={() => handleComplete(task)}
-                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm"
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap">
+                {task.status !== "done" && (
+                  <button
+                    onClick={() => handleComplete(task)}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm"
+                  >
+                    Complete
+                  </button>
+                )}
+                <select
+                  value={task.status}
+                  onChange={(e) => handleStatusChange(task, e.target.value)}
+                  className={`px-3 py-1.5 text-xs rounded-lg border-0 ${STATUS_COLORS[task.status]}`}
                 >
-                  Complete
+                  <option value="todo">To Do</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="done">Done</option>
+                </select>
+                <button
+                  onClick={() => handleDelete(task.id)}
+                  className="text-gray-400 hover:text-red-500 text-sm"
+                >
+                  Delete
                 </button>
-              )}
-              <select
-                value={task.status}
-                onChange={(e) => handleStatusChange(task, e.target.value)}
-                className={`px-3 py-1.5 text-xs rounded-lg border-0 ${STATUS_COLORS[task.status]}`}
-              >
-                <option value="todo">To Do</option>
-                <option value="in_progress">In Progress</option>
-                <option value="done">Done</option>
-              </select>
-              <button
-                onClick={() => handleDelete(task.id)}
-                className="text-gray-400 hover:text-red-500 text-sm"
-              >
-                Delete
-              </button>
+              </div>
             </div>
           ))}
         </div>

@@ -80,18 +80,18 @@ export default function NotificationsPage() {
 
   return (
     <main className="max-w-3xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
             Notification Settings
           </h1>
-          <p className="text-gray-500 mt-1">
+          <p className="text-gray-500 mt-1 text-sm sm:text-base">
             Get Discord or Telegram alerts when tasks are completed
           </p>
         </div>
         <Link
           href="/"
-          className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+          className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 self-start"
         >
           Back to Tasks
         </Link>

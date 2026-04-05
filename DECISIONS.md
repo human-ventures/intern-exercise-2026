@@ -83,6 +83,12 @@ Use this document to record your thinking as you work through the exercise. We c
 
 ---
 
+### Extra: Mobile responsive design
+- **Approach chosen:** Made all three pages (tasks, dashboard, notifications) fully responsive using Tailwind's `sm:` and `md:` breakpoints. No media queries or separate mobile layouts — just responsive utility classes that adapt the existing desktop layout.
+- **Key changes:** Navbar stacks vertically on mobile with wrapped XP/streak badges and smaller buttons. Task cards switch from horizontal to vertical layout on small screens with action buttons in a separate row. Dashboard summary cards go from 4-col to 2-col grid, charts from 3-col to stacked single column, breakdown tables from side-by-side to stacked. Filter bar wraps naturally with full-width search on mobile. Create form buttons span full width on mobile. Toasts use full-width on mobile, fixed-width on desktop. XP popup adjusts positioning.
+
+---
+
 ## General Notes
 
 *Anything else you want us to know — things you learned, challenges you hit, questions you'd ask if this were a real project.*

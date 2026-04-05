@@ -51,17 +51,15 @@ function CustomPieLabel({
   innerRadius,
   outerRadius,
   percent,
-  name,
 }: {
-  cx: number;
-  cy: number;
-  midAngle: number;
-  innerRadius: number;
-  outerRadius: number;
-  percent: number;
-  name: string;
+  cx?: number;
+  cy?: number;
+  midAngle?: number;
+  innerRadius?: number;
+  outerRadius?: number;
+  percent?: number;
 }) {
-  if (percent === 0) return null;
+  if (!percent || !cx || !cy || !midAngle || !innerRadius || !outerRadius) return null;
   const RADIAN = Math.PI / 180;
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -155,21 +153,21 @@ export default function DashboardPage() {
 
   return (
     <main className="max-w-5xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-500 mt-1">Overview of task statistics</p>
         </div>
         <Link
           href="/"
-          className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+          className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 self-start"
         >
           Back to Tasks
         </Link>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-8">
         <div className="p-5 border border-gray-200 rounded-xl bg-gradient-to-br from-white to-gray-50">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
             Total Tasks
@@ -203,7 +201,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-8">
         {/* Status Donut Chart */}
         <div className="p-5 border border-gray-200 rounded-xl">
           <h2 className="font-semibold text-gray-900 mb-2">Task Status</h2>
@@ -304,7 +302,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Detailed Breakdown Tables */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
         <div className="p-5 border border-gray-200 rounded-xl">
           <h2 className="font-semibold text-gray-900 mb-4">Status Breakdown</h2>
           {Object.entries(stats.by_status).map(([status, count]) => {
