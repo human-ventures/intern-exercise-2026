@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta, date
 import httpx
+import asyncio
+import threading
 
 from database import Base, engine, get_db
 from models import Task, TaskStatus, TaskPriority, UserScore, NotificationConfig
@@ -102,6 +104,78 @@ def seed_data():
     db.close()
 
 
+# ── Due-date reminder background loop ─────────────────────────────────
+
+REMINDER_INTERVAL_SECONDS = 3600  # check every hour
+
+async def _send_due_date_reminders():
+    """Send notifications for tasks due today or tomorrow."""
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+
+        overdue = (
+            db.query(Task)
+            .filter(Task.status != TaskStatus.DONE, Task.due_date != None, Task.due_date < today)
+            .all()
+        )
+        due_today = (
+            db.query(Task)
+            .filter(Task.status != TaskStatus.DONE, Task.due_date == today)
+            .all()
+        )
+        due_tomorrow = (
+            db.query(Task)
+            .filter(Task.status != TaskStatus.DONE, Task.due_date == tomorrow)
+            .all()
+        )
+
+        lines = []
+        if overdue:
+            lines.append(f"OVERDUE ({len(overdue)}):")
+            for t in overdue:
+                lines.append(f"  - {t.title} (was due {t.due_date})")
+        if due_today:
+            lines.append(f"\nDue TODAY ({len(due_today)}):")
+            for t in due_today:
+                lines.append(f"  - {t.title} [{t.priority.value}]")
+        if due_tomorrow:
+            lines.append(f"\nDue TOMORROW ({len(due_tomorrow)}):")
+            for t in due_tomorrow:
+                lines.append(f"  - {t.title} [{t.priority.value}]")
+
+        if lines:
+            msg = "Task Reminder\n" + "\n".join(lines)
+            await send_notification(db, msg)
+    finally:
+        db.close()
+
+
+async def _reminder_loop():
+    """Background loop that sends reminders periodically."""
+    while True:
+        await asyncio.sleep(REMINDER_INTERVAL_SECONDS)
+        try:
+            await _send_due_date_reminders()
+        except Exception:
+            pass  # don't crash the loop
+
+
+@app.on_event("startup")
+def start_reminder_loop():
+    loop = asyncio.get_event_loop()
+    loop.create_task(_reminder_loop())
+
+
+@app.post("/api/notifications/remind")
+async def trigger_reminder():
+    """Manually trigger a due-date reminder check."""
+    await _send_due_date_reminders()
+    return {"message": "Reminder check sent"}
+
+
 # ── CRUD endpoints ─────────────────────────────────────────────────────
 
 @app.get("/api/tasks", response_model=PaginatedResponse)
@@ -146,11 +220,16 @@ def list_tasks(
 
 
 @app.post("/api/tasks", response_model=TaskResponse)
-def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+async def create_task(task: TaskCreate, db: Session = Depends(get_db)):
     db_task = Task(**task.model_dump())
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
+
+    # Notify on task creation
+    due_text = f"\nDue: {db_task.due_date}" if db_task.due_date else ""
+    msg = f"New task created: {db_task.title}\nPriority: {db_task.priority.value}{due_text}"
+    await send_notification(db, msg)
 
     return db_task
 

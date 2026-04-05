@@ -7,6 +7,7 @@ import {
   saveNotificationConfig,
   deleteNotificationConfig,
   testNotification,
+  triggerReminder,
   type NotificationConfig,
 } from "@/lib/api";
 
@@ -15,6 +16,7 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testStatus, setTestStatus] = useState<string | null>(null);
+  const [reminderStatus, setReminderStatus] = useState<string | null>(null);
   const [service, setService] = useState<"discord" | "telegram">("discord");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [botToken, setBotToken] = useState("");
@@ -75,6 +77,18 @@ export default function NotificationsPage() {
     } catch {
       setTestStatus("failed");
       setTimeout(() => setTestStatus(null), 3000);
+    }
+  };
+
+  const handleReminder = async () => {
+    setReminderStatus("sending");
+    try {
+      await triggerReminder();
+      setReminderStatus("sent");
+      setTimeout(() => setReminderStatus(null), 3000);
+    } catch {
+      setReminderStatus("failed");
+      setTimeout(() => setReminderStatus(null), 3000);
     }
   };
 
@@ -202,19 +216,34 @@ export default function NotificationsPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-gray-900">Active Integrations</h2>
           {configs.length > 0 && (
-            <button
-              onClick={handleTest}
-              disabled={testStatus === "sending"}
-              className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-            >
-              {testStatus === "sending"
-                ? "Sending..."
-                : testStatus === "sent"
-                ? "Sent!"
-                : testStatus === "failed"
-                ? "Failed"
-                : "Send Test"}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleReminder}
+                disabled={reminderStatus === "sending"}
+                className="px-3 py-1.5 text-xs font-medium border border-orange-300 text-orange-700 bg-orange-50 rounded-lg hover:bg-orange-100 disabled:opacity-50"
+              >
+                {reminderStatus === "sending"
+                  ? "Sending..."
+                  : reminderStatus === "sent"
+                  ? "Sent!"
+                  : reminderStatus === "failed"
+                  ? "Failed"
+                  : "Send Reminders"}
+              </button>
+              <button
+                onClick={handleTest}
+                disabled={testStatus === "sending"}
+                className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                {testStatus === "sending"
+                  ? "Sending..."
+                  : testStatus === "sent"
+                  ? "Sent!"
+                  : testStatus === "failed"
+                  ? "Failed"
+                  : "Send Test"}
+              </button>
+            </div>
           )}
         </div>
 
@@ -264,14 +293,21 @@ export default function NotificationsPage() {
         <h3 className="font-semibold text-gray-700 mb-2">How it works</h3>
         <ul className="text-sm text-gray-500 space-y-1 list-disc list-inside">
           <li>
-            When you complete a task, a notification is sent with the XP earned
+            When you <strong>create</strong> a task, a notification is sent with the title, priority, and due date
           </li>
-          <li>Streak bonuses are included in the notification</li>
+          <li>
+            When you <strong>complete</strong> a task, a notification is sent with the XP earned and streak info
+          </li>
+          <li>
+            <strong>Due-date reminders</strong> run automatically every hour — listing overdue, due today, and due tomorrow tasks
+          </li>
+          <li>
+            Click &quot;Send Reminders&quot; to trigger a reminder check manually
+          </li>
           <li>
             You can add both Discord and Telegram — notifications go to all
             active integrations
           </li>
-          <li>Use the &quot;Send Test&quot; button to verify your setup</li>
         </ul>
       </div>
     </main>

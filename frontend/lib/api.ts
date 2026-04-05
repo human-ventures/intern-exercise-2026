@@ -151,3 +151,7 @@ export async function deleteNotificationConfig(id: number): Promise<void> {
 export async function testNotification(): Promise<void> {
   await api.post("/api/notifications/test");
 }
+
+export async function triggerReminder(): Promise<void> {
+  await api.post("/api/notifications/remind");
+}
